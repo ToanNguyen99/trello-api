@@ -5,6 +5,8 @@ import { boardModel } from '~/models/boardModel'
 import ApiError from '~/utils/ApiError'
 import { StatusCodes } from 'http-status-codes'
 import { cloneDeep } from 'lodash'
+import { columnModel } from '~/models/columnModel'
+import { cardModel } from '~/models/cardModel'
 
 const createNew = async (reqBody) => {
   try {
@@ -39,6 +41,7 @@ const getDetails = async (boardId) => {
 
     resBoard.columns.forEach(column => {
       // Cách dùng equals vì ObjectId trong mongodb có support method .equals
+      // .equals sẽ hỗ trợ gửi lỗi nếu gửi card.columnId là 1 string không có dạng objectId
       column.cards = resBoard.cards.filter(card => card.columnId.equals(column._id))
 
       // Cách thường dùng js
@@ -61,9 +64,29 @@ const update = async (boardId, reqBody) => {
     return updatedBoard
   } catch (error) { throw error }
 }
+const moveCardToDifferentColumn = async (reqBody) => {
+  try {
+    // B1. Cập nhật mảng cardOrderIds của Column ban đầu chứa nó (Hiểu bản chất là xóa cái _id của card ra khỏi mảng trong column cũ)
+    await columnModel.update(reqBody.prevColumnId, {
+      cardOrderIds: reqBody.prevCardOrderIds,
+      updatedAt: Date.now()
+    })
+    // B2. Cập nhật mảng cardOrderIds của column tiếp theo (Hiểu bản chất là thêm _id của card này vào mảng cardOrderIds trong column mới)
+    await columnModel.update(reqBody.nextColumnId, {
+      cardOrderIds: reqBody.nextCardOrderIds,
+      updatedAt: Date.now()
+    })
+    // B3. Cập nhật lại trường ColumnId mới của cái card đã kéo.
+    await cardModel.update(reqBody.currentCardId, {
+      columnId: reqBody.nextColumnId
+    })
+    return { updateResult: 'Success' }
+  } catch (error) { throw error }
+}
 
 export const boardService = {
   createNew,
   getDetails,
-  update
+  update,
+  moveCardToDifferentColumn
 }
